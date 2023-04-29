@@ -3,6 +3,7 @@ orbs:
   node: circleci/node@5.0.1
   docker: circleci/docker@2.1.4
   heroku: circleci/heroku@2.0.0
+  snyk: snyk/snyk@1.5.0
 jobs:
   build:
     docker:
@@ -35,30 +36,38 @@ jobs:
           image: importexportbusiness/education-space
       - docker/push:
           image: importexportbusiness/education-space
-  deploy:
-    docker:
-        - image: cimg/node:16.10
-    steps:
-        - setup_remote_docker      
-        - heroku/install
-        - checkout
-        - run:
-            name: Heroku Container Push
-            command: | 
-                heroku container:login
-                heroku container:push web -a cookie-devops
-                heroku container:release web -a cookie-devops
+
+  scan:
+        docker:
+            - image: cimg/node:16.10
+        environment:
+            IMAGE_NAME: importexportbusiness/education-space
+        steps:
+            - checkout
+            - setup_remote_docker      
+            - docker/check
+            - run: docker build -t $IMAGE_NAME .
+            - snyk/scan: 
+                docker-image-name: $IMAGE_NAME
 
 workflows:
   simple_workflow:
     jobs:
-      - build
+      - build:
+          filters:
+            branches:
+              only: main
       - test:
           requires:
+            - build 
+          filters:
+            branches:
+              only: main    
+
+    # The scan job
+      - scan:
+          requires:
             - build
-      - build-and-push:
-          requires:
-            - test
-      - deploy:
-          requires:
-            - build-and-push
+          filters:
+            branches:
+              only: main
